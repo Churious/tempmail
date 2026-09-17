@@ -282,10 +282,6 @@ func (a *app) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleMessageList(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodDelete {
-		a.handleDeleteMailbox(w, r)
-		return
-	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -322,55 +318,8 @@ func (a *app) handleMessageList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func (a *app) handleDeleteMailbox(w http.ResponseWriter, r *http.Request) {
-	s, ok := a.authenticate(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	address := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/mailboxes/"), "/")
-	if address != s.Address {
-		writeError(w, http.StatusForbidden, "forbidden")
-		return
-	}
-	rows, err := a.db.Query(`SELECT a.path FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.mailbox_id=?`, s.MailboxID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete mailbox")
-		return
-	}
-	var paths []string
-	for rows.Next() {
-		var path string
-		if rows.Scan(&path) == nil {
-			paths = append(paths, path)
-		}
-	}
-	rows.Close()
-	result, err := a.db.Exec(`DELETE FROM mailboxes WHERE id=?`, s.MailboxID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete mailbox")
-		return
-	}
-	affected, _ := result.RowsAffected()
-	if affected == 0 {
-		writeError(w, http.StatusNotFound, "mailbox not found")
-		return
-	}
-	for _, path := range paths {
-		_ = os.Remove(path)
-	}
-	a.sessions.Range(func(key, value any) bool {
-		if value.(session).MailboxID == s.MailboxID {
-			a.sessions.Delete(key)
-		}
-		return true
-	})
-	log.Printf("mailbox deleted address=%s", s.Address)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "address": s.Address})
-}
-
 func (a *app) handleMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -380,6 +329,14 @@ func (a *app) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	messageID := strings.TrimPrefix(r.URL.Path, "/api/v1/messages/")
+	if messageID == "" || strings.Contains(messageID, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		a.deleteMessage(w, messageID, s)
+		return
+	}
 	var mailboxID, name, from, subject, textBody, htmlBody string
 	var received time.Time
 	err := a.db.QueryRow(`SELECT mailbox_id,COALESCE(sender_name,''),sender_address,subject,COALESCE(body_text,''),COALESCE(body_html,''),received_at FROM messages WHERE id=?`, messageID).Scan(&mailboxID, &name, &from, &subject, &textBody, &htmlBody, &received)
@@ -400,6 +357,37 @@ func (a *app) handleMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": messageID, "sender_name": name, "sender_address": from, "subject": subject, "body_text": textBody, "body_html": htmlBody, "received_at": received, "attachments": attachments})
+}
+
+func (a *app) deleteMessage(w http.ResponseWriter, messageID string, s session) {
+	rows, err := a.db.Query(`SELECT a.path FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.id=? AND m.mailbox_id=?`, messageID, s.MailboxID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete message")
+		return
+	}
+	var paths []string
+	for rows.Next() {
+		var path string
+		if rows.Scan(&path) == nil {
+			paths = append(paths, path)
+		}
+	}
+	rows.Close()
+	result, err := a.db.Exec(`DELETE FROM messages WHERE id=? AND mailbox_id=?`, messageID, s.MailboxID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete message")
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
+	log.Printf("message deleted id=%s mailbox=%s", messageID, s.Address)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": messageID})
 }
 
 func (a *app) handleAttachment(w http.ResponseWriter, r *http.Request) {

@@ -34,7 +34,7 @@ func testApp(t *testing.T) *app {
 	return a
 }
 
-func TestMailboxRetentionAndDeletion(t *testing.T) {
+func TestMailboxRetention(t *testing.T) {
 	a := testApp(t)
 	create := func(localPart, retention string) map[string]any {
 		t.Helper()
@@ -59,32 +59,40 @@ func TestMailboxRetentionAndDeletion(t *testing.T) {
 	if permanent["expires_at"] != nil || permanent["is_preserved"] != true {
 		t.Fatalf("unexpected lifetime mailbox: %#v", permanent)
 	}
+}
 
-	var mailboxID string
-	if err := a.db.QueryRow(`SELECT id FROM mailboxes WHERE address=?`, temporary["address"]).Scan(&mailboxID); err != nil {
+func TestDeleteMessage(t *testing.T) {
+	a := testApp(t)
+	if _, err := a.db.Exec(`INSERT INTO mailboxes(id,address,expires_at,created_at) VALUES(?,?,?,?)`, "box", "test@example.com", time.Now().Add(time.Hour), time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	token := newID()
+	a.sessions.Store(token, session{MailboxID: "box", Address: "test@example.com"})
+
 	attachmentPath := filepath.Join(a.cfg.attachmentDir, "delete-me")
 	if err := os.WriteFile(attachmentPath, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.db.Exec(`INSERT INTO messages(id,mailbox_id,sender_address,subject,received_at) VALUES(?,?,?,?,?)`, "message", mailboxID, "sender@example.net", "delete", time.Now()); err != nil {
+	if _, err := a.db.Exec(`INSERT INTO messages(id,mailbox_id,sender_address,subject,received_at) VALUES(?,?,?,?,?)`, "message", "box", "sender@example.net", "delete", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.db.Exec(`INSERT INTO attachments(id,message_id,filename,size,path) VALUES(?,?,?,?,?)`, "attachment", "message", "file.txt", 4, attachmentPath); err != nil {
 		t.Fatal(err)
 	}
 
-	request := httptest.NewRequest(http.MethodDelete, "/api/v1/mailboxes/"+temporary["address"].(string), nil)
-	request.Header.Set("Authorization", "Bearer "+temporary["token"].(string))
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/messages/message", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
-	a.handleMessageList(response, request)
+	a.handleMessage(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("delete returned %d: %s", response.Code, response.Body.String())
 	}
 	var count int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM mailboxes WHERE id=?`, mailboxID).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("mailbox was not deleted: count=%d err=%v", count, err)
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE id=?`, "message").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("message was not deleted: count=%d err=%v", count, err)
+	}
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM mailboxes WHERE id=?`, "box").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("mailbox should remain: count=%d err=%v", count, err)
 	}
 	if _, err := os.Stat(attachmentPath); !os.IsNotExist(err) {
 		t.Fatalf("attachment was not deleted: %v", err)
