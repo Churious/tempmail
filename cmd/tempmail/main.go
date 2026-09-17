@@ -82,7 +82,7 @@ func env(key, fallback string) string {
 }
 func envInt(key string, fallback int) int {
 	v, err := strconv.Atoi(env(key, ""))
-	if err != nil {
+	if err != nil || v <= 0 {
 		return fallback
 	}
 	return v
@@ -193,19 +193,19 @@ func (a *app) handleMailboxes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "local_part must be 3-32 lowercase letters, numbers, - or _")
 		return
 	}
-	retention := input.Retention
-	if retention == "" {
-		retention = "1h"
-	}
+	retention := strings.TrimSpace(input.Retention)
 	var lifetime time.Duration
-	switch retention {
-	case "10m":
+	switch {
+	case retention == "":
+		lifetime = a.cfg.ttl
+		retention = strconv.Itoa(int(a.cfg.ttl/time.Hour)) + "h"
+	case retention == "10m":
 		lifetime = 10 * time.Minute
-	case "1h":
+	case retention == "1h":
 		lifetime = time.Hour
-	case "24h":
+	case retention == "24h":
 		lifetime = 24 * time.Hour
-	case "lifetime":
+	case retention == "lifetime":
 		lifetime = 0
 	default:
 		writeError(w, http.StatusBadRequest, "retention must be 10m, 1h, 24h, or lifetime")
@@ -225,7 +225,7 @@ func (a *app) handleMailboxes(w http.ResponseWriter, r *http.Request) {
 	token := newID()
 	a.sessions.Store(token, session{mailboxID, address})
 	log.Printf("mailbox created address=%s retention=%s", address, retention)
-	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt, "is_preserved": isPreserved})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt, "is_preserved": isPreserved, "retention": retention})
 }
 
 func (a *app) handlePreserve(w http.ResponseWriter, r *http.Request) {

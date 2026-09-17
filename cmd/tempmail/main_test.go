@@ -36,6 +36,7 @@ func testApp(t *testing.T) *app {
 
 func TestMailboxRetention(t *testing.T) {
 	a := testApp(t)
+	a.cfg.ttl = 3 * time.Hour
 	create := func(localPart, retention string) map[string]any {
 		t.Helper()
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/mailboxes", strings.NewReader(`{"local_part":"`+localPart+`","retention":"`+retention+`"}`))
@@ -49,6 +50,16 @@ func TestMailboxRetention(t *testing.T) {
 			t.Fatal(err)
 		}
 		return result
+	}
+
+	configuredDefault := create("default", "")
+	expiresAt, err := time.Parse(time.RFC3339Nano, configuredDefault["expires_at"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	remaining := time.Until(expiresAt)
+	if configuredDefault["retention"] != "3h" || remaining < 2*time.Hour+59*time.Minute || remaining > 3*time.Hour+time.Minute {
+		t.Fatalf("configured default TTL was not applied: retention=%v remaining=%v", configuredDefault["retention"], remaining)
 	}
 
 	temporary := create("short", "10m")

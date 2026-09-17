@@ -161,7 +161,7 @@ el('themeToggle').onclick=()=>{state.settings.theme=state.settings.theme==='dark
 el('defaultRetention').onchange=event=>{state.settings.defaultRetention=event.target.value;saveSettings();showToast('기본 보존 시간을 저장했습니다.')};
 el('clearLogs').onclick=()=>{state.logs=[];localStorage.removeItem(LOG_KEY);renderSettings()};
 
-(async()=>{restoreState();applyTheme();renderMailboxes();renderWorkspace();if(state.mailboxes.length){connectSocket();await loadMessages()}else{try{const data=await api('/api/v1/mailboxes',{method:'POST',body:JSON.stringify({retention:state.settings.defaultRetention})},null);upsertMailbox(data,data.is_preserved);addLog('생성',data.address,state.settings.defaultRetention)}catch(error){showToast(error.message)}}})();
+(async()=>{restoreState();applyTheme();renderMailboxes();renderWorkspace();if(state.mailboxes.length){connectSocket();await loadMessages()}else{try{const data=await api('/api/v1/mailboxes',{method:'POST',body:'{}'},null);upsertMailbox(data,data.is_preserved);addLog('생성',data.address,data.retention||'server default')}catch(error){showToast(error.message)}}})();
 </script>
 </body>
 </html>
