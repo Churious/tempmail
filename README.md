@@ -23,7 +23,7 @@
 docker compose up -d --build
 ```
 
-웹 UI는 `http://서버주소:3000/`에서 확인합니다. Open the UI at `http://your-server:3000/`.
+웹 UI는 `http://서버주소:7200/`에서 확인합니다. Open the UI at `http://your-server:7200/`.
 
 ## 환경변수 · Environment variables
 
