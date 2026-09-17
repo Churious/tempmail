@@ -201,7 +201,7 @@ func (a *app) handleMailboxes(w http.ResponseWriter, r *http.Request) {
 	}
 	token := newID()
 	a.sessions.Store(token, session{mailboxID, address})
-	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt, "is_preserved": false})
 }
 
 func (a *app) handlePreserve(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +254,7 @@ func (a *app) handleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	token := newID()
 	a.sessions.Store(token, s)
-	writeJSON(w, http.StatusOK, map[string]string{"token": token, "address": s.Address})
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "address": s.Address, "expires_at": nil, "is_preserved": true})
 }
 
 func (a *app) handleMessageList(w http.ResponseWriter, r *http.Request) {

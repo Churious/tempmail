@@ -6,68 +6,90 @@
   <title>Self-hosted Temp Mail</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
-  <style>body{font-family:Inter,ui-sans-serif,system-ui}.message-frame{color-scheme:light}</style>
+  <style>
+    :root{color-scheme:dark}*{scrollbar-color:#334155 transparent;scrollbar-width:thin}
+    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
+    .app-height{height:calc(100vh - 105px);min-height:620px}
+    .mailbox-grid{grid-template-columns:280px minmax(0,1fr)}
+    .inbox-grid{grid-template-columns:340px minmax(0,1fr)}
+    @media(max-width:1023px){.app-height{height:auto;min-height:0}.mailbox-grid{grid-template-columns:1fr}.inbox-grid{grid-template-columns:1fr}.mailbox-list{max-height:250px}.message-list{max-height:340px}}
+  </style>
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
-  <header class="border-b border-slate-800 bg-slate-950/90 backdrop-blur">
-    <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
-      <div><h1 class="text-xl font-bold">Self-hosted Temp Mail</h1><p class="text-xs text-slate-400">Receive privately. Disappear automatically.</p></div>
-      <button id="restoreOpen" class="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">보존 메일함 복원</button>
+  <header class="border-b border-slate-800 bg-slate-950">
+    <div class="mx-auto flex max-w-[1480px] items-center justify-between px-5 py-4">
+      <div><h1 class="text-lg font-bold tracking-tight">Self-hosted Temp Mail</h1><p class="mt-0.5 text-xs text-slate-500">Receive privately. Disappear automatically.</p></div>
+      <button id="restoreOpen" class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-slate-600 hover:bg-slate-900">보존 메일함 복원</button>
     </div>
   </header>
 
-  <main class="mx-auto max-w-7xl p-5">
-    <section class="mb-5 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div class="min-w-0"><p class="mb-1 text-xs font-medium uppercase tracking-wider text-slate-400">현재 메일함</p><p id="address" class="truncate font-mono text-xl text-cyan-300">메일함 생성 중...</p><p id="expiry" class="mt-1 text-xs text-slate-500"></p></div>
-        <div class="flex flex-wrap gap-2">
-          <button id="copy" class="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold hover:bg-cyan-500">주소 복사</button>
-          <button id="customOpen" class="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">새 주소</button>
-          <button id="preserve" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500">영구 보존</button>
+  <main class="mx-auto max-w-[1480px] p-5">
+    <div class="app-height mailbox-grid grid overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+      <aside class="flex min-h-0 flex-col border-b border-slate-800 lg:border-b-0 lg:border-r">
+        <div class="flex h-[61px] shrink-0 items-center justify-between border-b border-slate-800 px-4">
+          <h2 class="font-semibold">메일 목록</h2>
+          <button id="newMailbox" class="rounded-md bg-cyan-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-cyan-500">+ 새 메일</button>
         </div>
-      </div>
-    </section>
-
-    <div class="grid min-h-[620px] overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 lg:grid-cols-[360px_1fr]">
-      <aside class="border-b border-slate-800 lg:border-b-0 lg:border-r">
-        <div class="flex items-center justify-between border-b border-slate-800 p-4"><h2 class="font-semibold">받은 메일</h2><button id="refresh" class="text-sm text-cyan-400 hover:text-cyan-300">새로고침</button></div>
-        <div id="messages" class="max-h-[560px] overflow-y-auto"><div class="p-8 text-center text-sm text-slate-500">도착한 메일이 없습니다.</div></div>
+        <div id="mailboxes" class="mailbox-list min-h-0 flex-1 overflow-y-auto"></div>
       </aside>
-      <article id="detail" class="flex min-h-[500px] items-center justify-center p-6 text-center text-slate-500">
-        왼쪽 목록에서 메일을 선택하세요.
-      </article>
+
+      <section id="workspace" class="flex min-h-0 min-w-0 items-center justify-center text-sm text-slate-500">
+        왼쪽 목록에서 메일 주소를 선택하세요.
+      </section>
     </div>
   </main>
 
   <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
-    <form id="modalForm" class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-      <div class="mb-5 flex items-center justify-between"><h2 id="modalTitle" class="text-lg font-bold"></h2><button type="button" id="modalClose" class="text-slate-400">✕</button></div>
+    <form id="modalForm" class="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-6">
+      <div class="mb-5 flex items-center justify-between"><h2 id="modalTitle" class="text-lg font-bold"></h2><button type="button" id="modalClose" class="text-slate-400 hover:text-white">닫기</button></div>
       <div id="modalFields" class="space-y-3"></div>
       <p id="modalError" class="mt-3 text-sm text-rose-400"></p>
-      <button id="modalSubmit" class="mt-5 w-full rounded-lg bg-cyan-600 px-4 py-2 font-semibold hover:bg-cyan-500"></button>
+      <button id="modalSubmit" class="mt-5 w-full rounded-md bg-cyan-600 px-4 py-2 font-semibold hover:bg-cyan-500"></button>
     </form>
   </div>
 
-  <div id="toast" class="fixed bottom-5 right-5 hidden rounded-lg bg-slate-700 px-4 py-3 text-sm shadow-xl"></div>
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden rounded-md border border-slate-600 bg-slate-800 px-4 py-3 text-sm text-slate-100"></div>
 
 <script>
-const state={token:'',address:'',expiresAt:'',socket:null,selected:null};
+const STORAGE_KEY='tempmail-mailboxes-v2';
+const state={mailboxes:[],selectedAddress:null,messages:[],selectedMessage:null,socket:null};
 const el=id=>document.getElementById(id);
-const escapeHTML=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-function toast(message){el('toast').textContent=message;el('toast').classList.remove('hidden');setTimeout(()=>el('toast').classList.add('hidden'),2200)}
-async function api(path,options={}){options.headers={...(options.headers||{}),'Content-Type':'application/json'};if(state.token)options.headers.Authorization='Bearer '+state.token;const response=await fetch(path,options);let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||'요청에 실패했습니다.');return data}
-function applyMailbox(data){state.token=data.token;state.address=data.address;state.expiresAt=data.expires_at||'';sessionStorage.setItem('tempmail-session',JSON.stringify({token:state.token,address:state.address,expiresAt:state.expiresAt}));el('address').textContent=state.address;el('expiry').textContent=state.expiresAt?'만료: '+new Date(state.expiresAt).toLocaleString():'영구 보존 메일함';connectSocket();loadMessages()}
-async function createMailbox(localPart=''){applyMailbox(await api('/api/v1/mailboxes',{method:'POST',body:JSON.stringify({local_part:localPart})}))}
-async function loadMessages(){if(!state.address)return;const items=await api('/api/v1/mailboxes/'+encodeURIComponent(state.address)+'/messages');const box=el('messages');if(!items.length){box.innerHTML='<div class="p-8 text-center text-sm text-slate-500">도착한 메일이 없습니다.</div>';return}box.innerHTML=items.map(item=>`<button data-message-id="${item.id}" class="block w-full border-b border-slate-800 p-4 text-left transition hover:bg-slate-800 ${state.selected===item.id?'bg-slate-800':''}"><div class="truncate font-medium text-slate-100">${escapeHTML(item.subject||'(제목 없음)')}</div><div class="mt-1 truncate text-sm text-slate-400">${escapeHTML(item.sender_name||item.sender_address)}</div><div class="mt-2 text-xs text-slate-500">${new Date(item.received_at).toLocaleString()}</div></button>`).join('');box.querySelectorAll('[data-message-id]').forEach(button=>button.onclick=()=>openMessage(button.dataset.messageId))}
-async function openMessage(id){state.selected=id;await loadMessages();const message=await api('/api/v1/messages/'+id);const attachmentHTML=message.attachments.length?`<div class="mt-5 border-t border-slate-700 pt-4"><h3 class="mb-2 text-sm font-semibold">첨부파일</h3>${message.attachments.map(a=>`<button data-attachment-id="${a.id}" class="mr-2 mt-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">${escapeHTML(a.filename)} · ${formatBytes(a.size)}</button>`).join('')}</div>`:'';el('detail').className='block min-h-[500px] p-6 text-left';el('detail').innerHTML=`<header class="border-b border-slate-700 pb-5"><h2 class="text-2xl font-bold">${escapeHTML(message.subject||'(제목 없음)')}</h2><div class="mt-3 text-sm text-slate-400"><span class="text-slate-200">${escapeHTML(message.sender_name||message.sender_address)}</span> &lt;${escapeHTML(message.sender_address)}&gt;</div><div class="mt-1 text-xs text-slate-500">${new Date(message.received_at).toLocaleString()}</div></header><div id="mailBody" class="message-frame mt-5 overflow-auto rounded-lg bg-white p-5 text-slate-900"></div>${attachmentHTML}`;const body=el('mailBody');if(message.body_html)body.innerHTML=DOMPurify.sanitize(message.body_html);else body.innerHTML='<pre class="whitespace-pre-wrap font-sans">'+escapeHTML(message.body_text||'본문이 없습니다.')+'</pre>';el('detail').querySelectorAll('[data-attachment-id]').forEach(button=>button.onclick=()=>downloadAttachment(button.dataset.attachmentId))}
-async function downloadAttachment(id){const response=await fetch('/api/v1/attachments/'+id+'/download',{headers:{Authorization:'Bearer '+state.token}});if(!response.ok){toast('다운로드 실패');return}const blob=await response.blob();const disposition=response.headers.get('Content-Disposition')||'';const name=(disposition.match(/filename="?([^";]+)"?/)||[])[1]||'attachment';const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;link.click();URL.revokeObjectURL(link.href)}
-function formatBytes(n){if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(1)+' MB'}
-function connectSocket(){if(state.socket)state.socket.close();const scheme=location.protocol==='https:'?'wss':'ws';state.socket=new WebSocket(`${scheme}://${location.host}/ws/${encodeURIComponent(state.address)}?token=${encodeURIComponent(state.token)}`);state.socket.onmessage=()=>{toast('새 메일이 도착했습니다.');loadMessages()};state.socket.onclose=()=>setTimeout(()=>{if(state.address)connectSocket()},3000)}
-function showModal(type){const restore=type==='restore';el('modalTitle').textContent=restore?'보존 메일함 복원':'새 메일 주소 만들기';el('modalSubmit').textContent=restore?'복원하기':'생성하기';el('modalError').textContent='';el('modalFields').innerHTML=restore?'<input name="address" type="email" required placeholder="메일 주소" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-3"><input name="password" type="password" required placeholder="비밀번호" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-3">':'<input name="local_part" required minlength="3" maxlength="32" pattern="[a-z0-9_-]+" placeholder="원하는 아이디 (영문 소문자/숫자/-/_)" class="w-full rounded-lg border border-slate-700 bg-slate-950 p-3">';el('modalForm').dataset.type=type;el('modal').classList.remove('hidden');el('modal').classList.add('flex')}
-function hideModal(){el('modal').classList.add('hidden');el('modal').classList.remove('flex')}
-el('modalForm').onsubmit=async event=>{event.preventDefault();const type=event.currentTarget.dataset.type;const values=Object.fromEntries(new FormData(event.currentTarget));try{if(type==='restore')applyMailbox(await api('/api/v1/mailboxes/restore',{method:'POST',body:JSON.stringify(values)}));else await createMailbox(values.local_part);hideModal()}catch(error){el('modalError').textContent=error.message}};
-el('restoreOpen').onclick=()=>showModal('restore');el('customOpen').onclick=()=>showModal('custom');el('modalClose').onclick=hideModal;el('copy').onclick=async()=>{await navigator.clipboard.writeText(state.address);toast('주소를 복사했습니다.')};el('refresh').onclick=loadMessages;el('preserve').onclick=async()=>{const password=prompt('복원에 사용할 비밀번호를 입력하세요. (8자 이상)');if(!password)return;try{await api('/api/v1/mailboxes/preserve',{method:'POST',body:JSON.stringify({password})});state.expiresAt='';el('expiry').textContent='영구 보존 메일함';toast('메일함을 영구 보존했습니다.')}catch(error){toast(error.message)}};
-(async()=>{try{const saved=JSON.parse(sessionStorage.getItem('tempmail-session')||'null');if(saved?.token&&saved?.address){Object.assign(state,saved);el('address').textContent=state.address;el('expiry').textContent=state.expiresAt?'만료: '+new Date(state.expiresAt).toLocaleString():'영구 보존 메일함';connectSocket();await loadMessages()}else await createMailbox()}catch{sessionStorage.removeItem('tempmail-session');await createMailbox()}})();
+const escapeHTML=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+const selectedMailbox=()=>state.mailboxes.find(box=>box.address===state.selectedAddress)||null;
+
+function saveState(){localStorage.setItem(STORAGE_KEY,JSON.stringify({mailboxes:state.mailboxes,selectedAddress:state.selectedAddress}))}
+function restoreState(){try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');if(saved){state.mailboxes=Array.isArray(saved.mailboxes)?saved.mailboxes:[];state.selectedAddress=saved.selectedAddress||state.mailboxes[0]?.address||null}}catch{localStorage.removeItem(STORAGE_KEY)}}
+function showToast(message){el('toast').textContent=message;el('toast').classList.remove('hidden');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>el('toast').classList.add('hidden'),1800)}
+function formatDate(value){if(!value)return'';return new Date(value).toLocaleString('ko-KR',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}
+function formatBytes(bytes){if(bytes<1024)return bytes+' B';if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB';return(bytes/1048576).toFixed(1)+' MB'}
+async function api(path,options={},mailbox=selectedMailbox()){options.headers={...(options.headers||{}),'Content-Type':'application/json'};if(mailbox?.token)options.headers.Authorization='Bearer '+mailbox.token;const response=await fetch(path,options);let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||'요청에 실패했습니다.');return data}
+
+function upsertMailbox(data,preserved=false){const item={token:data.token,address:data.address,expiresAt:data.expires_at||'',isPreserved:data.is_preserved??preserved};const index=state.mailboxes.findIndex(box=>box.address===item.address);if(index>=0)state.mailboxes[index]={...state.mailboxes[index],...item};else state.mailboxes.unshift(item);state.selectedAddress=item.address;state.selectedMessage=null;saveState();renderMailboxes();renderWorkspace();connectSocket();loadMessages()}
+
+function renderMailboxes(){const container=el('mailboxes');if(!state.mailboxes.length){container.innerHTML='<div class="p-6 text-center text-sm text-slate-500"><p>생성된 메일이 없습니다.</p><button data-empty-new class="mt-4 text-cyan-400 hover:text-cyan-300">+ 새 메일</button></div>';container.querySelector('[data-empty-new]').onclick=()=>showModal('create');return}container.innerHTML=state.mailboxes.map(box=>{const selected=box.address===state.selectedAddress;const status=box.isPreserved?'영구 보존':box.expiresAt?formatDate(box.expiresAt)+' 만료':'만료 정보 없음';return `<div data-mailbox="${escapeHTML(box.address)}" class="group relative cursor-pointer border-b border-slate-800 py-4 pl-5 pr-4 transition ${selected?'bg-slate-800/80 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-cyan-400':'hover:bg-slate-800/40'}"><button data-copy="${escapeHTML(box.address)}" class="block max-w-full truncate text-left font-mono text-sm ${selected?'text-cyan-300':'text-slate-200'} hover:text-cyan-300 hover:underline hover:decoration-slate-600 hover:underline-offset-4">${escapeHTML(box.address)}</button><p class="mt-1.5 text-xs ${box.isPreserved?'text-emerald-400':'text-slate-500'}">${escapeHTML(status)}</p></div>`}).join('');container.querySelectorAll('[data-mailbox]').forEach(row=>row.onclick=()=>selectMailbox(row.dataset.mailbox));container.querySelectorAll('[data-copy]').forEach(button=>button.onclick=event=>{event.stopPropagation();copyAddress(button.dataset.copy)})}
+
+function renderWorkspace(){const mailbox=selectedMailbox();if(!mailbox){el('workspace').className='flex min-h-0 min-w-0 items-center justify-center text-sm text-slate-500';el('workspace').innerHTML='왼쪽 목록에서 메일 주소를 선택하세요.';return}const status=mailbox.isPreserved?'영구 보존됨':mailbox.expiresAt?formatDate(mailbox.expiresAt)+' 만료':'만료 정보 없음';el('workspace').className='flex min-h-0 min-w-0 flex-col';el('workspace').innerHTML=`<div class="flex h-[61px] w-full shrink-0 items-center justify-between gap-4 border-b border-slate-800 px-5"><div class="min-w-0"><button id="activeAddress" class="block max-w-full truncate text-left font-mono text-sm text-cyan-300 hover:underline hover:underline-offset-4">${escapeHTML(mailbox.address)}</button><p class="mt-0.5 text-xs ${mailbox.isPreserved?'text-emerald-400':'text-slate-500'}">${escapeHTML(status)}</p></div>${mailbox.isPreserved?'<span class="shrink-0 rounded-md border border-emerald-900 bg-emerald-950/50 px-3 py-1.5 text-xs text-emerald-400">영구 보존됨</span>':'<button id="preserve" class="shrink-0 rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800">영구 보존</button>'}</div><div class="inbox-grid grid min-h-0 w-full flex-1"><aside class="flex min-h-0 flex-col border-b border-slate-800 lg:border-b-0 lg:border-r"><div class="flex h-[52px] shrink-0 items-center justify-between border-b border-slate-800 px-4"><h3 class="text-sm font-semibold">받은 메일</h3><button id="refresh" class="text-xs text-cyan-400 hover:text-cyan-300">새로고침</button></div><div id="messages" class="message-list min-h-0 flex-1 overflow-y-auto"></div></aside><article id="detail" class="min-h-0 min-w-0 overflow-y-auto"></article></div>`;el('activeAddress').onclick=()=>copyAddress(mailbox.address);el('refresh').onclick=loadMessages;if(el('preserve'))el('preserve').onclick=preserveMailbox;renderMessages();renderDetailEmpty()}
+
+function renderMessages(){const container=el('messages');if(!container)return;if(!state.messages.length){container.innerHTML='<div class="p-8 text-center text-sm text-slate-500">아직 도착한 메일이 없습니다.</div>';return}container.innerHTML=state.messages.map(message=>`<button data-message="${message.id}" class="block w-full border-b border-slate-800 p-4 text-left transition ${message.id===state.selectedMessage?'bg-slate-800':'hover:bg-slate-800/50'}"><p class="truncate text-sm font-medium text-slate-100">${escapeHTML(message.sender_name||message.sender_address)}</p><p class="mt-1 truncate text-sm text-slate-300">${escapeHTML(message.subject||'(제목 없음)')}</p><p class="mt-2 text-xs text-slate-500">${formatDate(message.received_at)}</p></button>`).join('');container.querySelectorAll('[data-message]').forEach(button=>button.onclick=()=>openMessage(button.dataset.message))}
+function renderDetailEmpty(){const detail=el('detail');if(!detail)return;detail.className='flex min-h-0 min-w-0 items-center justify-center p-8 text-sm text-slate-500';detail.innerHTML=state.messages.length?'왼쪽에서 메일을 선택하세요.':'메일이 도착하면 이곳에서 내용을 확인할 수 있습니다.'}
+
+async function selectMailbox(address){if(address===state.selectedAddress)return;state.selectedAddress=address;state.messages=[];state.selectedMessage=null;saveState();renderMailboxes();renderWorkspace();connectSocket();await loadMessages()}
+async function loadMessages(){const mailbox=selectedMailbox();if(!mailbox)return;try{const items=await api('/api/v1/mailboxes/'+encodeURIComponent(mailbox.address)+'/messages',{},mailbox);if(mailbox.address!==state.selectedAddress)return;state.messages=items;renderMessages();if(!state.selectedMessage)renderDetailEmpty()}catch(error){showToast(error.message)}}
+
+async function openMessage(id){state.selectedMessage=id;renderMessages();const mailbox=selectedMailbox();try{const message=await api('/api/v1/messages/'+id,{},mailbox);if(id!==state.selectedMessage||mailbox.address!==state.selectedAddress)return;const attachments=message.attachments.length?`<section class="mt-6 border-t border-slate-700 pt-4"><h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">첨부파일</h3><div class="mt-2 flex flex-wrap gap-2">${message.attachments.map(file=>`<button data-attachment="${file.id}" class="rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800">${escapeHTML(file.filename)} · ${formatBytes(file.size)}</button>`).join('')}</div></section>`:'';const detail=el('detail');detail.className='min-h-0 min-w-0 overflow-y-auto p-6';detail.innerHTML=`<header class="border-b border-slate-800 pb-5"><h2 class="text-xl font-bold text-slate-100">${escapeHTML(message.subject||'(제목 없음)')}</h2><p class="mt-3 text-sm text-slate-300">${escapeHTML(message.sender_name||message.sender_address)} <span class="text-slate-500">&lt;${escapeHTML(message.sender_address)}&gt;</span></p><p class="mt-1 text-xs text-slate-500">${formatDate(message.received_at)}</p></header><div id="messageBody" class="mt-5 overflow-auto rounded-md bg-white p-5 text-slate-900"></div>${attachments}`;const body=el('messageBody');body.innerHTML=message.body_html?DOMPurify.sanitize(message.body_html):'<pre class="whitespace-pre-wrap font-sans text-sm leading-6">'+escapeHTML(message.body_text||'본문이 없습니다.')+'</pre>';detail.querySelectorAll('[data-attachment]').forEach(button=>button.onclick=()=>downloadAttachment(button.dataset.attachment,mailbox))}catch(error){showToast(error.message)}}
+
+async function downloadAttachment(id,mailbox){const response=await fetch('/api/v1/attachments/'+id+'/download',{headers:{Authorization:'Bearer '+mailbox.token}});if(!response.ok){showToast('다운로드에 실패했습니다.');return}const blob=await response.blob();const disposition=response.headers.get('Content-Disposition')||'';const filename=(disposition.match(/filename="?([^";]+)"?/)||[])[1]||'attachment';const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=filename;link.click();URL.revokeObjectURL(link.href)}
+async function copyAddress(address){try{await navigator.clipboard.writeText(address);showToast('주소가 복사되었습니다.')}catch{showToast('주소를 복사하지 못했습니다.')}}
+
+function connectSocket(){if(state.socket){state.socket.onclose=null;state.socket.close();state.socket=null}const mailbox=selectedMailbox();if(!mailbox)return;const scheme=location.protocol==='https:'?'wss':'ws';const address=mailbox.address;state.socket=new WebSocket(`${scheme}://${location.host}/ws/${encodeURIComponent(address)}?token=${encodeURIComponent(mailbox.token)}`);state.socket.onmessage=()=>{if(state.selectedAddress===address){showToast('새 메일이 도착했습니다.');loadMessages()}};state.socket.onclose=()=>{if(state.selectedAddress===address)setTimeout(connectSocket,3000)}}
+async function preserveMailbox(){const mailbox=selectedMailbox();const password=prompt('복원에 사용할 비밀번호를 입력하세요. (8자 이상)');if(!password)return;try{await api('/api/v1/mailboxes/preserve',{method:'POST',body:JSON.stringify({password})},mailbox);mailbox.isPreserved=true;mailbox.expiresAt='';saveState();renderMailboxes();renderWorkspace();showToast('메일함을 영구 보존했습니다.')}catch(error){showToast(error.message)}}
+
+function showModal(type){const restore=type==='restore';el('modalTitle').textContent=restore?'보존 메일함 복원':'새 메일 만들기';el('modalSubmit').textContent=restore?'복원하기':'생성하기';el('modalError').textContent='';el('modalFields').innerHTML=restore?'<input name="address" type="email" required placeholder="메일 주소" class="w-full rounded-md border border-slate-700 bg-slate-950 p-3 outline-none focus:border-cyan-600"><input name="password" type="password" required placeholder="비밀번호" class="w-full rounded-md border border-slate-700 bg-slate-950 p-3 outline-none focus:border-cyan-600">':'<label class="block text-sm text-slate-400">아이디를 비워두면 무작위 주소가 생성됩니다.</label><input name="local_part" minlength="3" maxlength="32" pattern="[a-z0-9_-]+" placeholder="원하는 아이디 (선택)" class="w-full rounded-md border border-slate-700 bg-slate-950 p-3 outline-none focus:border-cyan-600">';el('modalForm').dataset.type=type;el('modal').classList.remove('hidden');el('modal').classList.add('flex')}
+function hideModal(){el('modal').classList.add('hidden');el('modal').classList.remove('flex');el('modalForm').reset()}
+el('modalForm').onsubmit=async event=>{event.preventDefault();const type=event.currentTarget.dataset.type;const values=Object.fromEntries(new FormData(event.currentTarget));try{if(type==='restore'){const data=await api('/api/v1/mailboxes/restore',{method:'POST',body:JSON.stringify(values)},null);upsertMailbox(data,true)}else{const data=await api('/api/v1/mailboxes',{method:'POST',body:JSON.stringify({local_part:values.local_part||''})},null);upsertMailbox(data,false)}hideModal()}catch(error){el('modalError').textContent=error.message}};
+el('newMailbox').onclick=()=>showModal('create');el('restoreOpen').onclick=()=>showModal('restore');el('modalClose').onclick=hideModal;
+
+(async()=>{restoreState();renderMailboxes();renderWorkspace();if(state.mailboxes.length){connectSocket();await loadMessages()}else{try{const data=await api('/api/v1/mailboxes',{method:'POST',body:'{}'},null);upsertMailbox(data,false)}catch(error){showToast(error.message)}}})();
 </script>
 </body>
 </html>
