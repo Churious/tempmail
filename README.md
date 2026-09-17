@@ -12,6 +12,9 @@
 - TTL 만료 및 백그라운드 자동 삭제 / Automatic TTL cleanup
 - 비밀번호 기반 보존·복원 / Password-protected preservation and restore
 - 내장 SMTP 수신 서버 / Embedded receive-only SMTP server
+- MIME 본문·HTML·첨부파일 파싱 / MIME body, HTML, and attachment parsing
+- 메일 목록과 개별 상세 보기 / Inbox list and individual message view
+- 서버 및 브라우저 HTML 정화 / Server- and browser-side HTML sanitization
 - WebSocket 실시간 알림 / Real-time WebSocket notifications
 - SQLite 단일 파일 저장소 / Single-file SQLite storage
 
@@ -53,6 +56,8 @@ go mod download
 go build ./cmd/tempmail
 go test ./...
 ```
+
+SQLite 드라이버는 순수 Go로 빌드되므로 로컬에 GCC가 필요하지 않습니다.
 
 ## 운영 주의사항 · Production notes
 

@@ -1,0 +1,7 @@
+.git
+.gitignore
+data
+tempmail
+tempmail.exe
+*.db
+*.log

@@ -9,4 +9,5 @@ Protected endpoints use `Authorization: Bearer <token>`.
 | POST | `/api/v1/mailboxes/restore` | Restore mailbox |
 | GET | `/api/v1/mailboxes/:address/messages` | List messages |
 | GET | `/api/v1/messages/:id` | Read message |
+| GET | `/api/v1/attachments/:id/download` | Download attachment |
 | WS | `/ws/:address?token=<token>` | Live events |
