@@ -9,6 +9,8 @@
 ## 주요 기능 · Features
 
 - 무작위 임시 메일함 발급 / Instant disposable mailbox creation
+- 생성 시 10분, 1시간, 24시간, Lifetime 선택 / Selectable retention on creation
+- 메일함 삭제 및 생성·삭제 활동 로그 / Mailbox deletion and activity log
 - TTL 만료 및 백그라운드 자동 삭제 / Automatic TTL cleanup
 - 비밀번호 기반 보존·복원 / Password-protected preservation and restore
 - 내장 SMTP 수신 서버 / Embedded receive-only SMTP server

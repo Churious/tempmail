@@ -2,6 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +32,63 @@ func testApp(t *testing.T) *app {
 	}
 	t.Cleanup(func() { db.Close() })
 	return a
+}
+
+func TestMailboxRetentionAndDeletion(t *testing.T) {
+	a := testApp(t)
+	create := func(localPart, retention string) map[string]any {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/mailboxes", strings.NewReader(`{"local_part":"`+localPart+`","retention":"`+retention+`"}`))
+		response := httptest.NewRecorder()
+		a.handleMailboxes(response, request)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("create returned %d: %s", response.Code, response.Body.String())
+		}
+		var result map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	temporary := create("short", "10m")
+	if temporary["expires_at"] == nil || temporary["is_preserved"] != false {
+		t.Fatalf("unexpected temporary mailbox: %#v", temporary)
+	}
+	permanent := create("forever", "lifetime")
+	if permanent["expires_at"] != nil || permanent["is_preserved"] != true {
+		t.Fatalf("unexpected lifetime mailbox: %#v", permanent)
+	}
+
+	var mailboxID string
+	if err := a.db.QueryRow(`SELECT id FROM mailboxes WHERE address=?`, temporary["address"]).Scan(&mailboxID); err != nil {
+		t.Fatal(err)
+	}
+	attachmentPath := filepath.Join(a.cfg.attachmentDir, "delete-me")
+	if err := os.WriteFile(attachmentPath, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO messages(id,mailbox_id,sender_address,subject,received_at) VALUES(?,?,?,?,?)`, "message", mailboxID, "sender@example.net", "delete", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO attachments(id,message_id,filename,size,path) VALUES(?,?,?,?,?)`, "attachment", "message", "file.txt", 4, attachmentPath); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/mailboxes/"+temporary["address"].(string), nil)
+	request.Header.Set("Authorization", "Bearer "+temporary["token"].(string))
+	response := httptest.NewRecorder()
+	a.handleMessageList(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete returned %d: %s", response.Code, response.Body.String())
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM mailboxes WHERE id=?`, mailboxID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("mailbox was not deleted: count=%d err=%v", count, err)
+	}
+	if _, err := os.Stat(attachmentPath); !os.IsNotExist(err) {
+		t.Fatalf("attachment was not deleted: %v", err)
+	}
 }
 
 func TestStoreMessageParsesAndSanitizesMIME(t *testing.T) {

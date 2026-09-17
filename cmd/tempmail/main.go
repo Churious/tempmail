@@ -180,6 +180,7 @@ func (a *app) handleMailboxes(w http.ResponseWriter, r *http.Request) {
 	}
 	var input struct {
 		LocalPart string `json:"local_part"`
+		Retention string `json:"retention"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -192,16 +193,39 @@ func (a *app) handleMailboxes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "local_part must be 3-32 lowercase letters, numbers, - or _")
 		return
 	}
+	retention := input.Retention
+	if retention == "" {
+		retention = "1h"
+	}
+	var lifetime time.Duration
+	switch retention {
+	case "10m":
+		lifetime = 10 * time.Minute
+	case "1h":
+		lifetime = time.Hour
+	case "24h":
+		lifetime = 24 * time.Hour
+	case "lifetime":
+		lifetime = 0
+	default:
+		writeError(w, http.StatusBadRequest, "retention must be 10m, 1h, 24h, or lifetime")
+		return
+	}
 	now, mailboxID := time.Now().UTC(), newID()
 	address := local + "@" + strings.ToLower(a.cfg.domain)
-	expiresAt := now.Add(a.cfg.ttl)
-	if _, err := a.db.Exec(`INSERT INTO mailboxes(id,address,expires_at,created_at) VALUES(?,?,?,?)`, mailboxID, address, expiresAt, now); err != nil {
+	var expiresAt any
+	isPreserved := lifetime == 0
+	if !isPreserved {
+		expiresAt = now.Add(lifetime)
+	}
+	if _, err := a.db.Exec(`INSERT INTO mailboxes(id,address,is_preserved,expires_at,created_at) VALUES(?,?,?,?,?)`, mailboxID, address, isPreserved, expiresAt, now); err != nil {
 		writeError(w, http.StatusConflict, "address unavailable")
 		return
 	}
 	token := newID()
 	a.sessions.Store(token, session{mailboxID, address})
-	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt, "is_preserved": false})
+	log.Printf("mailbox created address=%s retention=%s", address, retention)
+	writeJSON(w, http.StatusCreated, map[string]any{"id": mailboxID, "address": address, "token": token, "expires_at": expiresAt, "is_preserved": isPreserved})
 }
 
 func (a *app) handlePreserve(w http.ResponseWriter, r *http.Request) {
@@ -258,6 +282,10 @@ func (a *app) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleMessageList(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		a.handleDeleteMailbox(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -292,6 +320,53 @@ func (a *app) handleMessageList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (a *app) handleDeleteMailbox(w http.ResponseWriter, r *http.Request) {
+	s, ok := a.authenticate(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	address := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/mailboxes/"), "/")
+	if address != s.Address {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	rows, err := a.db.Query(`SELECT a.path FROM attachments a JOIN messages m ON m.id=a.message_id WHERE m.mailbox_id=?`, s.MailboxID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete mailbox")
+		return
+	}
+	var paths []string
+	for rows.Next() {
+		var path string
+		if rows.Scan(&path) == nil {
+			paths = append(paths, path)
+		}
+	}
+	rows.Close()
+	result, err := a.db.Exec(`DELETE FROM mailboxes WHERE id=?`, s.MailboxID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete mailbox")
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "mailbox not found")
+		return
+	}
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
+	a.sessions.Range(func(key, value any) bool {
+		if value.(session).MailboxID == s.MailboxID {
+			a.sessions.Delete(key)
+		}
+		return true
+	})
+	log.Printf("mailbox deleted address=%s", s.Address)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "address": s.Address})
 }
 
 func (a *app) handleMessage(w http.ResponseWriter, r *http.Request) {
