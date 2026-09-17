@@ -1,0 +1,17 @@
+services:
+  tempmail:
+    build: .
+    container_name: tempmail_server
+    restart: unless-stopped
+    ports:
+      - "25:25"
+      - "80:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      DOMAIN: yourdomain.com
+      DB_PATH: /app/data/tempmail.db
+      ATTACHMENT_DIR: /app/data/attachments
+      DEFAULT_TTL_HOURS: "1"
+      HTTP_ADDR: :8080
+      SMTP_ADDR: :25
